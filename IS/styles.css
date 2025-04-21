@@ -1,0 +1,32 @@
+body{
+    font-family: Verdana, Geneva, Tahoma, sans-serif;
+    background-color: #ffffff9e;
+    color: rgb(0, 0, 0);
+
+}
+a{
+    color: rgb(71, 53, 38);
+}
+h1, h2{
+    text-align: center;
+}
+img{
+    border: 5px dotted rgb(218, 162, 178);
+    padding: 5px;
+    height: 250px;
+    /* margin: auto;
+    display: block; */
+}
+.rizz{
+    font-family: 'Gill Sans', 'Gill Sans MT', Calibri, 'Trebuchet MS', sans-serif;
+    color: rgb(0, 0, 0);
+    font-size: 300%;
+    font-weight: bolder;
+}
+li{
+    width: fit-content;
+}
+li:hover{
+    text-decoration: underline;
+    background-color: beige;
+}

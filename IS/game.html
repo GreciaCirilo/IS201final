@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Basic Platformer - Plumber Theme (Multi-Level)</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #5c94fc; /* Light blue sky background */
+            font-family: sans-serif;
+            position: relative;
+            overflow: hidden;
+        }
+        canvas {
+            border: 1px solid black;
+            background-color: #e0f8f0;
+            display: block;
+            max-width: 100%;
+            height: auto;
+        }
+        #game-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center; /* Align items vertically */
+            width: 800px; /* Match canvas width */
+            max-width: 95%;
+            margin-top: 10px;
+            margin-bottom: 10px;
+            font-size: 1em;
+            color: #333;
+        }
+         #levelDisplay { /* Style for level indicator */
+             font-weight: bold;
+         }
+
+        /* Modal Styles */
+        #endGameModal {
+            display: none; position: fixed; left: 0; top: 0; width: 100%; height: 100%;
+            background-color: rgba(0, 0, 0, 0.6); z-index: 1000;
+            justify-content: center; align-items: center; text-align: center;
+        }
+        .modal-content {
+            background-color: #fefefe; padding: 30px; border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3); min-width: 300px;
+        }
+        #modalMessage {
+            font-size: 1.5em; font-weight: bold; margin-bottom: 20px;
+        }
+         button#restartButton {
+            padding: 10px 20px; font-size: 1.1em; cursor: pointer; border: none;
+            border-radius: 5px; background-color: #4CAF50; color: white;
+        }
+         button#restartButton:hover { background-color: #45a049; }
+
+    </style>
+</head>
+<div class="common nav">
+    <a href="../index.html">Home</a> &nbsp; | &nbsp;
+    <a href="../resume.html">Resume</a> &nbsp; | &nbsp;
+    <a href="interest.html">Interests</a> &nbsp; | &nbsp;
+    <a href="game.html">Game</a> &nbsp; | &nbsp;
+
+</div>
+<body>
+
+    <div id="game-info">
+        <div id="lives">Lives: 3</div>
+        <div id="levelDisplay">Level: 1</div> <div id="controls-info">Arrows: Move/Jump</div>
+    </div>
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+
+    <div id="endGameModal">
+        <div class="modal-content">
+            <div id="modalMessage"></div>
+            <button id="restartButton">Restart Game</button>
+        </div>
+    </div>
+
+    <script>
+        window.onload = function() {
+            // --- DOM Elements ---
+            const canvas = document.getElementById('gameCanvas');
+            const ctx = canvas.getContext('2d');
+            const livesDisplay = document.getElementById('lives');
+            const levelDisplay = document.getElementById('levelDisplay'); // Level display element
+            const endGameModal = document.getElementById('endGameModal');
+            const modalMessage = document.getElementById('modalMessage');
+            const restartButton = document.getElementById('restartButton');
+
+            // --- Game Configuration ---
+            const gravity = 0.5;
+            const playerMoveSpeed = 4;
+            const playerJumpStrength = 11;
+            const enemySpeed = 1;
+            const initialLives = 3;
+            const totalLevels = 4; // Total number of levels
+
+            // --- Game State ---
+            let player = {};
+            let enemies = [];
+            let levelPlatforms = []; // Renamed from 'level' to avoid confusion
+            let currentLevelIndex = 0; // Start at level 0
+            let lives = initialLives;
+            let gameActive = false;
+            let keys = { left: false, right: false, up: false };
+            let animationFrameId = null;
+
+            // --- Level Data Structure ---
+            // Each element contains platforms, enemies, goal, and player start position
+            const levelsData = [
+                // Level 0 (Original Simple)
+                {
+                    startPos: { x: 50, y: canvas.height - 50 - 40 },
+                    platforms: [
+                        { x: 0, y: canvas.height - 20, width: canvas.width, height: 20, type: 'ground', color: '#34a853' },
+                        { x: 150, y: canvas.height - 80, width: 100, height: 15, type: 'platform', color: '#fbbc05' },
+                        { x: 300, y: canvas.height - 140, width: 120, height: 15, type: 'platform', color: '#fbbc05' },
+                        { x: 500, y: canvas.height - 160, width: 150, height: 15, type: 'platform', color: '#fbbc05' }, // Flag platform
+                    ],
+                    enemies: [
+                        { x: 310, y: canvas.height - 140 - 25, width: 25, height: 25, vx: -enemySpeed, capColor: '#db4437', stemColor: '#fce8b2', type: 'enemy', moveMinX: 300, moveMaxX: 300 + 120 - 25 },
+                    ],
+                    goal: { x: 550, y: canvas.height - 160 - 50, width: 10, height: 50, type: 'goal', poleHeight: 50, poleWidth: 10, flagWidth: 30, flagHeight: 20, poleColor: 'black', flagColor: 'green' }
+                },
+                // Level 1 (More Gaps, Obstacle)
+                {
+                    startPos: { x: 30, y: canvas.height - 50 - 40 },
+                    platforms: [
+                        { x: 0, y: canvas.height - 20, width: 150, height: 20, type: 'ground', color: '#34a853' }, // Shorter ground
+                        { x: 250, y: canvas.height - 60, width: 100, height: 15, type: 'platform', color: '#fbbc05' },
+                        { x: 400, y: canvas.height - 100, width: 30, height: 40, type: 'obstacle', color: '#a0aec0' }, // Obstacle block
+                        { x: 480, y: canvas.height - 120, width: 100, height: 15, type: 'platform', color: '#fbbc05' },
+                        { x: 650, y: canvas.height - 160, width: 130, height: 15, type: 'platform', color: '#fbbc05' }, // Flag platform
+                    ],
+                    enemies: [
+                         { x: 260, y: canvas.height - 60 - 25, width: 25, height: 25, vx: enemySpeed, capColor: '#db4437', stemColor: '#fce8b2', type: 'enemy', moveMinX: 250, moveMaxX: 250 + 100 - 25 },
+                         { x: 660, y: canvas.height - 160 - 25, width: 25, height: 25, vx: -enemySpeed, capColor: '#db4437', stemColor: '#fce8b2', type: 'enemy', moveMinX: 650, moveMaxX: 650 + 130 - 25 },
+                    ],
+                    goal: { x: 700, y: canvas.height - 160 - 50, width: 10, height: 50, type: 'goal', poleHeight: 50, poleWidth: 10, flagWidth: 30, flagHeight: 20, poleColor: 'black', flagColor: 'green' }
+                },
+                 // Level 2 (Trickier Jumps, More Enemies)
+                {
+                    startPos: { x: 40, y: canvas.height - 100 - 40 }, // Start higher
+                    platforms: [
+                        { x: 0, y: canvas.height - 100, width: 80, height: 15, type: 'platform', color: '#fbbc05' }, // Start platform
+                        { x: 150, y: canvas.height - 150, width: 50, height: 15, type: 'platform', color: '#fbbc05' }, // Small jump
+                        { x: 250, y: canvas.height - 130, width: 50, height: 15, type: 'platform', color: '#fbbc05' }, // Step up
+                        { x: 350, y: canvas.height - 180, width: 150, height: 15, type: 'platform', color: '#fbbc05' }, // Longer platform with enemy
+                        { x: 550, y: canvas.height - 240, width: 50, height: 15, type: 'platform', color: '#fbbc05' }, // High small jump
+                        { x: 650, y: canvas.height - 280, width: 100, height: 15, type: 'platform', color: '#fbbc05' }, // Flag platform (high)
+                        { x: 0, y: canvas.height - 20, width: canvas.width, height: 20, type: 'ground', color: '#8B4513' }, // Brown bottom pit
+                    ],
+                    enemies: [
+                         { x: 360, y: canvas.height - 180 - 25, width: 25, height: 25, vx: enemySpeed, capColor: '#db4437', stemColor: '#fce8b2', type: 'enemy', moveMinX: 350, moveMaxX: 350 + 150 - 25 },
+                         { x: 450, y: canvas.height - 180 - 25, width: 25, height: 25, vx: -enemySpeed, capColor: '#db4437', stemColor: '#fce8b2', type: 'enemy', moveMinX: 350, moveMaxX: 350 + 150 - 25 }, // Second enemy on same platform
+                    ],
+                    goal: { x: 680, y: canvas.height - 280 - 50, width: 10, height: 50, type: 'goal', poleHeight: 50, poleWidth: 10, flagWidth: 30, flagHeight: 20, poleColor: 'black', flagColor: 'green' }
+                },
+                 // Level 3 (Precise Jumps, Obstacles, Enemies)
+                {
+                    startPos: { x: 20, y: canvas.height - 40 - 40 },
+                    platforms: [
+                        { x: 0, y: canvas.height - 40, width: 50, height: 15, type: 'platform', color: '#fbbc05' }, // Start
+                        { x: 100, y: canvas.height - 80, width: 30, height: 15, type: 'platform', color: '#fbbc05' }, // Tiny jump
+                        { x: 180, y: canvas.height - 120, width: 30, height: 15, type: 'platform', color: '#fbbc05' }, // Tiny jump
+                        { x: 250, y: canvas.height - 100, width: 150, height: 15, type: 'platform', color: '#fbbc05' }, // Enemy platform
+                        { x: 420, y: canvas.height - 100, width: 20, height: 40, type: 'obstacle', color: '#a0aec0' }, // Wall obstacle
+                        { x: 460, y: canvas.height - 150, width: 80, height: 15, type: 'platform', color: '#fbbc05' },
+                        { x: 580, y: canvas.height - 190, width: 30, height: 15, type: 'platform', color: '#fbbc05' }, // Tiny jump
+                        { x: 650, y: canvas.height - 230, width: 120, height: 15, type: 'platform', color: '#fbbc05' }, // Flag platform
+                        { x: 0, y: canvas.height - 20, width: canvas.width, height: 20, type: 'ground', color: '#8B4513' }, // Bottom pit
+                    ],
+                    enemies: [
+                        { x: 260, y: canvas.height - 100 - 25, width: 25, height: 25, vx: -enemySpeed, capColor: '#db4437', stemColor: '#fce8b2', type: 'enemy', moveMinX: 250, moveMaxX: 250 + 150 - 25 },
+                         { x: 660, y: canvas.height - 230 - 25, width: 25, height: 25, vx: enemySpeed, capColor: '#db4437', stemColor: '#fce8b2', type: 'enemy', moveMinX: 650, moveMaxX: 650 + 120 - 25 },
+                    ],
+                    goal: { x: 700, y: canvas.height - 230 - 50, width: 10, height: 50, type: 'goal', poleHeight: 50, poleWidth: 10, flagWidth: 30, flagHeight: 20, poleColor: 'black', flagColor: 'green' }
+                }
+            ];
+
+            // --- Load Level Data ---
+            function loadLevel(levelIndex) {
+                if (levelIndex >= levelsData.length) {
+                    console.error("Invalid level index:", levelIndex);
+                    return; // Or handle game completion?
+                }
+                const data = levelsData[levelIndex];
+                levelPlatforms = data.platforms; // Load platforms for collision/drawing
+                enemies = JSON.parse(JSON.stringify(data.enemies)); // Deep copy enemies to allow removal
+                // Goal is implicitly part of platforms data for collision detection now
+                levelDisplay.textContent = `Level: ${levelIndex + 1}`; // Update UI
+            }
+
+            // --- Player Reset ---
+            function resetPlayer() {
+                 // Initial position set by resetPlayerPosition based on level data
+                 player = {
+                    x: 0, y: 0, // Will be set by resetPlayerPosition
+                    width: 30, height: 40, vx: 0, vy: 0,
+                    bodyColor: 'blue', shirtColor: 'red',
+                    isOnGround: false, isInvincible: false, invincibleTimer: 0
+                };
+                resetPlayerPosition(); // Set initial position for the current level
+            }
+
+            // --- Game Initialization / Reset ---
+            function resetGame() {
+                if (animationFrameId) cancelAnimationFrame(animationFrameId);
+                endGameModal.style.display = 'none';
+                currentLevelIndex = 0; // Start at level 0
+                loadLevel(currentLevelIndex); // Load the first level's data
+                resetPlayer(); // Reset player state and position for level 0
+                lives = initialLives;
+                updateLivesDisplay();
+                keys = { left: false, right: false, up: false };
+                gameActive = true;
+                gameLoop();
+            }
+
+             // --- Reset Player Position (for new level or losing life) ---
+             function resetPlayerPosition() {
+                const startPos = levelsData[currentLevelIndex].startPos;
+                player.x = startPos.x;
+                player.y = startPos.y;
+                player.vx = 0;
+                player.vy = 0;
+                player.isOnGround = false; // Recalculate on next frame
+            }
+
+
+            // --- Input Handling ---
+            document.addEventListener('keydown', (e) => { /* ... same ... */
+                 if (!gameActive) return; if (e.key === 'ArrowLeft') keys.left = true; if (e.key === 'ArrowRight') keys.right = true; if (e.key === 'ArrowUp' || e.key === ' ') keys.up = true;
+            });
+            document.addEventListener('keyup', (e) => { /* ... same ... */
+                 if (e.key === 'ArrowLeft') keys.left = false; if (e.key === 'ArrowRight') keys.right = false; if (e.key === 'ArrowUp' || e.key === ' ') keys.up = false;
+            });
+            restartButton.addEventListener('click', resetGame);
+
+            // --- Game Loop ---
+            function gameLoop(timestamp) { /* ... same ... */
+                 if (!gameActive) return; update(timestamp); draw(); animationFrameId = requestAnimationFrame(gameLoop);
+            }
+
+            // --- Update Game State ---
+            function update(timestamp) { /* ... same ... */
+                 updatePlayer(timestamp); updateEnemies(); handleCollisions(); handleEnemyCollisions();
+             }
+
+            // --- Update Player Logic ---
+            function updatePlayer(timestamp) { /* ... same ... */
+                 if (player.isInvincible) { player.invincibleTimer -= 16; if (player.invincibleTimer <= 0) player.isInvincible = false; } player.vx = 0; if (keys.left) player.vx = -playerMoveSpeed; if (keys.right) player.vx = playerMoveSpeed; if (keys.up && player.isOnGround) { player.vy = -playerJumpStrength; player.isOnGround = false; } player.vy += gravity; player.x += player.vx; player.y += player.vy; if (player.y + player.height > canvas.height) { player.y = canvas.height - player.height; player.vy = 0; player.isOnGround = true; } if (player.x < 0) player.x = 0; if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+             }
+
+            // --- Update Enemy Logic ---
+            function updateEnemies() { /* ... same ... */
+                 enemies.forEach(enemy => { enemy.x += enemy.vx; if (enemy.x <= enemy.moveMinX || enemy.x + enemy.width >= enemy.moveMaxX) { enemy.vx *= -1; if (enemy.x < enemy.moveMinX) enemy.x = enemy.moveMinX; if (enemy.x + enemy.width > enemy.moveMaxX) enemy.x = enemy.moveMaxX - enemy.width; } });
+             }
+
+            // --- Collision Handling ---
+            function handleCollisions() { // Player vs Level Platforms/Obstacles/Goal
+                player.isOnGround = false;
+                // Combine platforms and goal into one array for collision check
+                const currentLevelGoal = levelsData[currentLevelIndex].goal;
+                const collisionItems = [...levelPlatforms, currentLevelGoal];
+
+                collisionItems.forEach(item => {
+                    if (checkAABBCollision(player, item)) {
+                         if (item.type === 'goal') {
+                            // Don't resolve collision, just trigger win/next level
+                            handleGoalReached();
+                        } else {
+                            // Resolve collision for platforms and obstacles
+                            resolvePlatformCollision(player, item);
+                        }
+                    }
+                });
+            }
+            function handleEnemyCollisions() { /* ... same ... */
+                 if (player.isInvincible) return; enemies.forEach((enemy, index) => { if (checkAABBCollision(player, enemy)) { const playerBottom = player.y + player.height; const enemyTop = enemy.y; const verticalTolerance = 8; if (player.vy > 0 && playerBottom <= enemyTop + verticalTolerance) { enemies.splice(index, 1); player.vy = -playerJumpStrength / 1.5; } else { loseLife(); } } });
+             }
+
+            // --- AABB Collision Check ---
+            function checkAABBCollision(rect1, rect2) { /* ... same ... */
+                 return ( rect1.x < rect2.x + rect2.width && rect1.x + rect1.width > rect2.x && rect1.y < rect2.y + rect2.height && rect1.y + rect1.height > rect2.y );
+             }
+            // --- Resolve Player vs Platform/Obstacle Collision ---
+            function resolvePlatformCollision(player, platform) { /* ... same ... */
+                 const overlapX = (player.x + player.width / 2) - (platform.x + platform.width / 2); const overlapY = (player.y + player.height / 2) - (platform.y + platform.height / 2); const combinedHalfWidths = player.width / 2 + platform.width / 2; const combinedHalfHeights = player.height / 2 + platform.height / 2; const overlapXAmount = combinedHalfWidths - Math.abs(overlapX); const overlapYAmount = combinedHalfHeights - Math.abs(overlapY); if (overlapYAmount < overlapXAmount) { if (overlapY > 0) { player.y = platform.y + platform.height; player.vy = Math.max(0, player.vy); } else { player.y = platform.y - player.height; player.vy = 0; player.isOnGround = true; } } else { if (overlapX > 0) { player.x = platform.x + platform.width; } else { player.x = platform.x - player.width; } player.vx = 0; }
+             }
+
+            // --- Life and Game State Functions ---
+            function loseLife() { /* ... same, calls gameOver ... */
+                 if (player.isInvincible || !gameActive) return; lives--; updateLivesDisplay(); if (lives <= 0) { gameOver(); } else { resetPlayerPosition(); player.isInvincible = true; player.invincibleTimer = 1500; }
+             }
+            function updateLivesDisplay() { /* ... same ... */
+                 livesDisplay.textContent = `Lives: ${lives}`;
+             }
+
+            function gameOver() { /* ... same, shows modal ... */
+                 gameActive = false; if (animationFrameId) cancelAnimationFrame(animationFrameId); animationFrameId = null; modalMessage.textContent = 'Maybe next time Beta'; modalMessage.style.color = 'red'; endGameModal.style.display = 'flex';
+             }
+
+             // --- Handle Reaching Goal ---
+             function handleGoalReached() {
+                 if (!gameActive) return; // Prevent multiple triggers
+
+                 if (currentLevelIndex < totalLevels - 1) {
+                     // Go to next level
+                     currentLevelIndex++;
+                     loadLevel(currentLevelIndex);
+                     resetPlayerPosition(); // Reset player to start of new level
+                     // Maybe add a brief "Level X" message? For now, just continue.
+                 } else {
+                     // Last level completed - Win Game!
+                     winGame();
+                 }
+             }
+
+            function winGame() { // Final win state
+                gameActive = false;
+                if (animationFrameId) cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+                modalMessage.textContent = 'Awesome job Alpha!';
+                modalMessage.style.color = 'green';
+                endGameModal.style.display = 'flex';
+            }
+
+            // --- Drawing Functions ---
+            function draw() {
+                ctx.fillStyle = '#5c94fc'; ctx.fillRect(0, 0, canvas.width, canvas.height); // Clear
+
+                // Draw level platforms and obstacles
+                levelPlatforms.forEach(item => {
+                    ctx.fillStyle = item.color;
+                    ctx.fillRect(item.x, item.y, item.width, item.height);
+                });
+
+                // Draw goal separately
+                drawFlag(levelsData[currentLevelIndex].goal);
+
+                enemies.forEach(drawMushroom); // Draw Enemies
+
+                // Draw Player
+                if (player.isInvincible) { if (Math.floor(player.invincibleTimer / 100) % 2 === 0) drawPlayer(); }
+                else { drawPlayer(); }
+            }
+            function drawPlayer() { /* ... same ... */
+                 const bodyHeight = player.height * 0.6; const shirtHeight = player.height * 0.4; ctx.fillStyle = player.bodyColor; ctx.fillRect(player.x, player.y + shirtHeight, player.width, bodyHeight); ctx.fillStyle = player.shirtColor; ctx.fillRect(player.x, player.y, player.width, shirtHeight);
+             }
+            function drawMushroom(enemy) { /* ... same ... */
+                 const stemHeight = enemy.height * 0.4; const capRadius = enemy.width / 2; const capCenterY = enemy.y + enemy.height - stemHeight; ctx.fillStyle = enemy.stemColor; ctx.fillRect(enemy.x + enemy.width * 0.25, enemy.y + enemy.height - stemHeight, enemy.width * 0.5, stemHeight); ctx.fillStyle = enemy.capColor; ctx.beginPath(); ctx.arc(enemy.x + capRadius, capCenterY, capRadius, Math.PI, 0); ctx.fill();
+             }
+            function drawFlag(goal) { /* ... same ... */
+                  ctx.fillStyle = goal.poleColor; ctx.fillRect(goal.x, goal.y, goal.poleWidth, goal.poleHeight); ctx.fillStyle = goal.flagColor; ctx.fillRect(goal.x + goal.poleWidth, goal.y, goal.flagWidth, goal.flagHeight);
+            }
+
+            // --- Start Game ---
+            resetGame(); // Initialize and start
+
+        }; // End window.onload
+    </script>
+
+</body>
+</html>
